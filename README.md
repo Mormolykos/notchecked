@@ -224,6 +224,10 @@ a primitive rather than one person's preference.
 
 ## Reference implementations
 
-- [trainproof](https://github.com/Mormolykos/trainproof) — deterministic linter for ML
-  training runs. First adopter, additively: the typed field ships alongside the existing
-  `skipped` map rather than replacing it.
+**None yet.** The four failures above are real and are regression tests here, but no shipped
+tool has adopted this schema, so nothing has yet proved the API survives contact with one.
+
+[trainproof](https://github.com/Mormolykos/trainproof) — the deterministic linter for ML
+training runs that failures 1 and 2 came from — is the intended first adopter, additively:
+the typed field will ship alongside its existing `skipped` map rather than replacing it. That
+work is not done, and it is the next thing that will find holes in this design.
