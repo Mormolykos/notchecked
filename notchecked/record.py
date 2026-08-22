@@ -13,6 +13,7 @@ a byproduct rather than a later reconstruction.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from types import MappingProxyType
 from typing import Any, Iterable, Mapping
 
 from .states import Coverage
@@ -101,6 +102,13 @@ class Record:
     extra: Mapping[str, Any] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
+        # `frozen=True` protects the binding, not the object bound. A mutable
+        # mapping behind a frozen record is a record that can change after the
+        # check that wrote it has returned, which defeats the point of writing
+        # it at the moment of decision.
+        object.__setattr__(self, "extra", MappingProxyType(dict(self.extra)))
+        object.__setattr__(self, "evidence", tuple(self.evidence))
+
         if self.coverage.is_checked:
             if self.reason is not None:
                 raise ValueError(

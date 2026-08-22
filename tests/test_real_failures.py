@@ -18,6 +18,7 @@ from notchecked import (
     Reason,
     Record,
     Report,
+    ReportError,
     Vocabulary,
     VocabularyError,
 )
@@ -80,7 +81,8 @@ def test_a_target_that_raised_while_being_found_is_still_a_row():
     while being *found* never became a candidate and never appeared in the
     report -- visible on disk, absent from the output, indistinguishable from a
     file that passed. It must appear, owned by the tooling."""
-    r = Report(tool="trainproof doctor", vocabulary=vocab())
+    r = Report(tool="trainproof doctor", vocabulary=vocab(),
+               failing_verdicts=frozenset({"FAIL"}))
     r.add(Record("logs/run_a.jsonl", Coverage.CHECKED, verdict="PASS"))
     r.add(Record("logs/run_b.jsonl", Coverage.NOT_CHECKED_CHECKER_FAILED,
                  reason="checker_raised", detail="UnicodeDecodeError at byte 4096"))
@@ -106,7 +108,8 @@ def test_the_denominator_is_the_checkable_subset_not_the_framework():
     """A framework document is mostly prose no artifact can satisfy. Reporting
     against the framework name makes the never-in-scope majority vanish and the
     remainder look like full coverage."""
-    r = Report(tool="landing-zone-audit", vocabulary=vocab())
+    r = Report(tool="landing-zone-audit", vocabulary=vocab(),
+               failing_verdicts=frozenset({"NON_COMPLIANT"}))
     for i in range(2):
         r.add(Record(f"AC-{i}", Coverage.CHECKED, verdict="COMPLIANT"))
     for i in range(8):
@@ -182,7 +185,8 @@ def test_a_reason_cannot_be_emitted_under_the_wrong_state():
 def test_counts_are_derived_not_stored():
     """The count and the rows cannot disagree, because there is no count to
     disagree with until someone reads one."""
-    r = Report(tool="anything", vocabulary=vocab())
+    r = Report(tool="anything", vocabulary=vocab(),
+               failing_verdicts=frozenset({"FAIL"}))
     assert r.total == 0 and r.coverage_ratio is None
     r.add(Record("a", Coverage.CHECKED, verdict="PASS"))
     assert r.total == 1 and r.coverage_ratio == 1.0
@@ -190,16 +194,25 @@ def test_counts_are_derived_not_stored():
     assert r.total == 2 and r.coverage_ratio == 0.5
 
 
-def test_empty_denominator_is_not_zero_coverage():
-    """Nothing evaluable is an absence of coverage, not a coverage of zero."""
-    r = Report(tool="anything", vocabulary=vocab())
-    r.add(Record("only", Coverage.OUT_OF_SCOPE_CALLER, reason="not_requested"))
+def test_a_report_that_judged_nothing_never_exits_zero():
+    """FOUND BY AUDIT. The first draft returned EXIT_OK here, and a test
+    asserted that as correct: declare every target out of scope and the report
+    reads as green. That is this library's own thesis error, one level up.
+    Excluding a target is a claim; a tool that excludes everything has made no
+    measurement."""
+    r = Report(tool="cheat", vocabulary=vocab(),
+               failing_verdicts=frozenset({"FAIL"}))
+    for i in range(100):
+        r.add(Record(f"control-{i}", Coverage.OUT_OF_SCOPE_CALLER,
+                     reason="not_requested"))
     assert r.coverage_ratio is None
-    assert r.exit_code == EXIT_OK, "nothing was in scope, so nothing is outstanding"
+    assert r.excluded_ratio == 1.0
+    assert r.exit_code == EXIT_COVERAGE_INCOMPLETE
 
 
 def test_incomplete_coverage_never_exits_zero():
-    r = Report(tool="anything", vocabulary=vocab())
+    r = Report(tool="anything", vocabulary=vocab(),
+               failing_verdicts=frozenset({"FAIL"}))
     r.add(Record("a", Coverage.CHECKED, verdict="PASS"))
     r.add(Record("b", Coverage.NOT_CHECKED_DATA_DEGENERATE, reason="no_scale"))
     assert not r.failures()
@@ -214,7 +227,8 @@ def test_every_state_has_an_owner_and_a_remediation():
 
 def test_json_round_trips_and_states_its_coverage():
     import json
-    r = Report(tool="anything", vocabulary=vocab(), context={"corpus": "v1"})
+    r = Report(tool="anything", vocabulary=vocab(), context={"corpus": "v1"},
+               failing_verdicts=frozenset({"FAIL"}))
     r.add(Record("a", Coverage.CHECKED, verdict="PASS", evidence=("p1", "p2")))
     r.add(Record("b", Coverage.OUT_OF_SCOPE_CALLER, reason="not_requested"))
     payload = json.loads(r.to_json())
@@ -225,3 +239,64 @@ def test_json_round_trips_and_states_its_coverage():
     assert payload["counts"]["excluded"] == 1
     assert payload["records"][1]["owner"] == Owner.CALLER.value
     assert payload["records"][1]["permanence"] == "mutable"
+
+
+# -- Found by auditing this library, before it was published -------------------
+#
+# Five attacks landed on the first draft. Two of them were this library
+# committing its own thesis error one level up. Each is now a regression test.
+
+def test_a_target_that_never_arrived_is_detected():
+    """FOUND BY AUDIT. The discovery-loop failure in domain 2 is the reason this
+    library exists, and the first draft did not prevent it: a target that never
+    became a record was invisible, and the report claimed perfect coverage.
+    A report cannot notice a row nobody wrote, so the caller declares the target
+    set and the report says what never arrived."""
+    r = Report(tool="doctor", vocabulary=vocab(),
+               failing_verdicts=frozenset({"FAIL"}),
+               expected={"logs/a.jsonl", "logs/b.jsonl"})
+    r.add(Record("logs/a.jsonl", Coverage.CHECKED, verdict="PASS"))
+    # logs/b.jsonl raised during discovery and was swallowed.
+
+    assert r.missing() == ["logs/b.jsonl"]
+    assert r.evaluable == 2, "an absent row cannot be out of scope"
+    assert r.coverage_ratio == 0.5
+    assert r.exit_code == EXIT_COVERAGE_INCOMPLETE
+
+
+def test_without_an_expected_set_the_report_says_so():
+    """Silence about missing targets is not evidence there are none."""
+    r = Report(tool="doctor", vocabulary=vocab(),
+               failing_verdicts=frozenset({"FAIL"}))
+    r.add(Record("logs/a.jsonl", Coverage.CHECKED, verdict="PASS"))
+    assert r.expected_declared is False
+    assert "never arrived cannot be detected" in r.render()
+
+
+def test_one_target_cannot_hold_two_states():
+    """FOUND BY AUDIT. Two records for one target were counted twice in
+    silence, so `checked` and `total` described different target sets."""
+    r = Report(tool="dupe", vocabulary=vocab(),
+               failing_verdicts=frozenset({"FAIL"}))
+    r.add(Record("x", Coverage.CHECKED, verdict="PASS"))
+    with pytest.raises(ReportError, match="already has a record"):
+        r.add(Record("x", Coverage.OUT_OF_SCOPE_CALLER, reason="not_requested"))
+
+
+def test_a_verdict_vocabulary_must_be_declared():
+    """FOUND BY AUDIT. `failing_verdicts` defaulted to {"FAIL"}, so a compliance
+    tool emitting NON_COMPLIANT exited 0 on real failures. There is no safe
+    default for another domain's vocabulary, so there is no default."""
+    r = Report(tool="compliance", vocabulary=vocab())
+    r.add(Record("AC-1", Coverage.CHECKED, verdict="NON_COMPLIANT"))
+    with pytest.raises(ReportError, match="failing_verdicts was never declared"):
+        r.exit_code
+
+
+def test_a_record_cannot_be_mutated_after_the_check_returned():
+    """FOUND BY AUDIT. `frozen=True` protects the binding, not the dict behind
+    it, so a record could change after the check that wrote it had returned."""
+    rec = Record("x", Coverage.CHECKED, verdict="PASS", extra={"a": 1})
+    with pytest.raises(TypeError):
+        rec.extra["a"] = 999          # type: ignore[index]
+    assert rec.extra["a"] == 1

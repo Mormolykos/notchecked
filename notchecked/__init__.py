@@ -35,6 +35,7 @@ from .report import (
     EXIT_VERDICT_FAILED,
     SCHEMA,
     Report,
+    ReportError,
 )
 from .states import Coverage, Owner, Permanence, StateMeta
 
@@ -50,6 +51,7 @@ __all__ = [
     "Vocabulary",
     "VocabularyError",
     "Report",
+    "ReportError",
     "SCHEMA",
     "EXIT_OK",
     "EXIT_VERDICT_FAILED",
