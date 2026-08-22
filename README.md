@@ -90,7 +90,12 @@ vocab = Vocabulary([
            "the caller did not ask for this check"),
 ])
 
-report = Report(tool="trainproof", vocabulary=vocab)
+report = Report(
+    tool="trainproof",
+    vocabulary=vocab,
+    failing_verdicts=frozenset({"FAIL"}),          # no default - see below
+    expected={"loss-shape", "grad-spike", "lr", "import"},
+)
 report.add(Record("loss-shape", Coverage.CHECKED, verdict="PASS"))
 report.add(Record("grad-spike", Coverage.NOT_CHECKED_DATA_DEGENERATE, reason="no_scale"))
 report.add(Record("lr", Coverage.OUT_OF_SCOPE_DATA_PERMANENT, reason="no_signal"))
@@ -101,13 +106,25 @@ raise SystemExit(report.exit_code)
 ```
 
 ```
-trainproof: 1/2 evaluable targets checked, 2 out of scope
+trainproof: 1/2 evaluable targets checked, 2 out of scope (50% of all targets)
   PASS: 1
   not checked: 3
     [NOT_CHECKED/DATA_DEGENERATE] grad-spike: no_scale  -> the signal is present and unusable; accept the gap or supply data that carries scale
     [OUT_OF_SCOPE/DATA_PERMANENT] lr: no_signal  -> no artifact of this kind can ever evidence it; excluded by design, not pending
     [OUT_OF_SCOPE/CALLER] import: not_requested  -> not requested; pass the flag or select the check
 ```
+
+### Two arguments with no defaults, on purpose
+
+**`failing_verdicts`.** Verdicts are your domain's vocabulary. An earlier draft
+defaulted to `{"FAIL"}`, which meant a compliance tool emitting `NON_COMPLIANT`
+exited **0 on real failures**. There is no safe guess, so there is no default —
+reading `exit_code` with undeclared verdicts raises.
+
+**`expected`.** A report cannot notice a row nobody wrote. Declaring the target
+set up front is what lets `missing()` report targets that never arrived — the
+discovery-loop failure above. Omit it and the report says so out loud rather than
+implying the set was complete.
 
 `report.to_json()` emits the same thing for CI, under schema `notchecked/1`.
 
