@@ -167,6 +167,16 @@ class Report:
         return sum(1 for r in self.records if r.coverage.is_checked)
 
     @property
+    def waived(self) -> int:
+        """Targets in scope that a named person accepted rather than judging.
+
+        Counted and surfaced separately because a waiver is an auditable
+        decision, not a shrug -- and because a report where every target is
+        waived must not read differently from one where every target was
+        excluded. Both are 'nothing was measured'."""
+        return sum(1 for r in self.records if r.coverage.is_waived)
+
+    @property
     def excluded(self) -> int:
         return sum(1 for r in self.records
                    if not r.coverage.counts_toward_denominator)
@@ -235,6 +245,7 @@ class Report:
                 "evaluable": self.evaluable,
                 "checked": self.checked,
                 "excluded": self.excluded,
+                "waived": self.waived,
                 "missing": len(self.missing()),
                 "coverage_ratio": self.coverage_ratio,
                 "excluded_ratio": self.excluded_ratio,
@@ -262,6 +273,8 @@ class Report:
         if self.excluded:
             pct = f"{self.excluded_ratio:.0%}" if self.excluded_ratio else "0%"
             lines[0] += f", {self.excluded} out of scope ({pct} of all targets)"
+        if self.waived:
+            lines[0] += f", {self.waived} waived"
         if not self.expected_declared:
             lines.append("  no expected target set declared - a target that "
                          "never arrived cannot be detected")

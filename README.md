@@ -40,19 +40,46 @@ hypothesis.
 
 Four domains, one primitive: **absence of evidence rendered as a positive result.**
 
-## The six states
+## The eight states
 
 | state | owner of the fix | does it ever move? |
 |---|---|---|
 | `CHECKED` | — | a determination was made; see the verdict |
 | `NOT_CHECKED / DATA_DEGENERATE` | the data | the signal is there and unusable — accept the gap or supply better data |
-| `NOT_CHECKED / CHECKER_FAILED` | your tooling | the checker raised, timed out, or lacked a dependency — fix it |
+| `NOT_CHECKED / CHECKER_FAILED` | your tooling | the checker raised, timed out, or could not observe — fix it |
+| `NOT_CHECKED / WAIVED` | a named person | in scope, deliberately not evaluated, accepted — revisit at expiry |
+| `NOT_CHECKED / PREREQUISITE_FAILED` | another target | something upstream failed first; fix that, then this becomes judgeable |
 | `OUT_OF_SCOPE / CALLER` | the caller | not requested — pass the flag |
 | `OUT_OF_SCOPE / DATA_TRANSIENT` | the deployment | changes when the deployment changes |
 | `OUT_OF_SCOPE / DATA_PERMANENT` | nobody | no artifact of this kind can ever evidence it |
 
 Two states that share a bucket give the reader a to-do they cannot action. Every split here
-exists because two things that read identically in a report have opposite remediations.
+exists because two things that read identically in a report have opposite remediations — and
+a test asserts that no two states share both an owner and a remediation.
+
+The last two `NOT_CHECKED` states were added after the first draft was attacked with 24
+realistic cases across ML training, compliance, RAG evaluation, CI/CD and production
+monitoring. Twelve fit exactly one state, **five fit none**, four fit two. A **waiver** and a
+**cascade** were the only two that needed new states; the rest needed rules or a verdict.
+
+`WAIVED` requires `waived_by` and `PREREQUISITE_FAILED` requires `blocked_by`. An unowned
+waiver is a silence with paperwork, and a cascade with no pointer to its cause is a dead end.
+
+### Three tie-break rules
+
+Four of the 24 cases fit **two** states. These decide them, and none of them needed a new
+state:
+
+**Could the caller have fixed it by changing the invocation?** Missing credentials, missing
+permissions, an unset flag — yes means `OUT_OF_SCOPE / CALLER`, no means
+`NOT_CHECKED / CHECKER_FAILED`.
+
+**Did the check produce a determination?** A crash halfway through, a timeout after partial
+work — no determination is `CHECKER_FAILED`, however far it got. Partial is not a result.
+
+**Could the checker observe the target at all?** A health check that cannot reach the service
+is `CHECKER_FAILED`, **never a failing verdict**. Unreachable is not unhealthy, and reporting
+it as failure is this library's own error wearing a different costume.
 
 ### Coverage and verdict are orthogonal
 
@@ -154,10 +181,28 @@ implying the set was complete.
 
 ## Limits
 
-This is a schema and an accounting layer. It cannot tell you whether your *checks* are any
-good — a tool with one trivial check and full coverage will report full coverage. It does not
-know what your targets are, and it will happily account for a target list that is itself
-incomplete. It makes coverage claims auditable; it does not make them true.
+Named because the attack found them, not because they sound modest.
+
+**A misconfigured check reports `CHECKED`.** If your threshold is wrong, the check runs,
+produces a meaningless number, and this library records a clean determination. It accounts
+for what your checks *report*; it cannot know whether a check is meaningful. This is the
+largest limitation and nothing here mitigates it.
+
+**No sub-target granularity.** A checker that sampled 10% of a target reports `CHECKED` for
+the whole target. If partial evaluation matters to you, split the target.
+
+**No history.** A single run. A target `CHECKED` yesterday and `CHECKER_FAILED` today produces
+two independent reports and this library will not notice the flake.
+
+**Evidence freshness is invisible.** A check that ran successfully against a six-month-old
+artifact is `CHECKED`. Put the timestamp in `evidence` or `context`; the coverage state will
+not carry it for you.
+
+**`expected` is only as good as you are.** It closes the vanished-target hole, but nothing
+validates that the declared target set is itself complete or free of duplicates.
+
+**Conflicting evidence is a verdict, not a state.** Two artifacts disagreeing about one
+target *is* a determination — give it a verdict like `CONFLICT`. It is not a coverage gap.
 
 ## Status
 

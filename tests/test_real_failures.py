@@ -300,3 +300,93 @@ def test_a_record_cannot_be_mutated_after_the_check_returned():
     with pytest.raises(TypeError):
         rec.extra["a"] = 999          # type: ignore[index]
     assert rec.extra["a"] == 1
+
+
+# -- Found by the taxonomy attack: 24 cases, 5 fit no state at all -------------
+
+def test_a_waiver_is_not_out_of_scope():
+    """FOUND BY AUDIT. A waived control IS in scope, IS applicable, and was
+    deliberately not evaluated by a named person. Filing it under
+    OUT_OF_SCOPE/CALLER says 'not requested', which is false and removes it from
+    the denominator -- exactly where an accepted risk goes to disappear."""
+    r = Report(tool="audit", vocabulary=Vocabulary([
+        Reason("accepted_risk", Coverage.NOT_CHECKED_WAIVED, "signed waiver on file")]),
+        failing_verdicts=frozenset({"NON_COMPLIANT"}))
+    r.add(Record("AC-7", Coverage.NOT_CHECKED_WAIVED, reason="accepted_risk",
+                 waived_by="ciso@example.com", waiver_expires="2026-12-31"))
+
+    assert r.evaluable == 1, "a waiver does not shrink the denominator"
+    assert r.excluded == 0
+    assert r.waived == 1
+    assert r.by_owner() == {Owner.WAIVER_HOLDER.value: 1}
+
+
+def test_an_unowned_waiver_is_refused():
+    """A waiver with no name on it is a silence with paperwork."""
+    with pytest.raises(ValueError, match="requires waived_by"):
+        Record("AC-7", Coverage.NOT_CHECKED_WAIVED, reason="accepted_risk")
+
+
+def test_waiving_everything_does_not_produce_green():
+    """The attack that closed OUT_OF_SCOPE returns in a new costume if a waiver
+    is treated as a resolved gap. It is not: a named person accepting a risk is
+    auditable, but it is still nothing measured."""
+    r = Report(tool="audit", vocabulary=Vocabulary([
+        Reason("accepted_risk", Coverage.NOT_CHECKED_WAIVED, "signed waiver")]),
+        failing_verdicts=frozenset({"NON_COMPLIANT"}))
+    for i in range(50):
+        r.add(Record(f"AC-{i}", Coverage.NOT_CHECKED_WAIVED,
+                     reason="accepted_risk", waived_by="ciso@example.com"))
+    assert r.checked == 0
+    assert r.coverage_ratio == 0.0
+    assert r.exit_code == EXIT_COVERAGE_INCOMPLETE
+
+
+def test_a_cascade_does_not_blame_the_tooling():
+    """FOUND BY AUDIT. grad-spike skipped because the parse check feeding it
+    failed. The checker did not fail, the data is not degenerate, the caller did
+    ask. Filing it as CHECKER_FAILED sends someone to debug a working parser."""
+    r = Report(tool="trainproof", vocabulary=Vocabulary([
+        Reason("upstream_failed", Coverage.NOT_CHECKED_PREREQUISITE_FAILED,
+               "a target this check depends on failed first")]),
+        failing_verdicts=frozenset({"FAIL"}))
+    r.add(Record("grad-spike", Coverage.NOT_CHECKED_PREREQUISITE_FAILED,
+                 reason="upstream_failed", blocked_by="log-parse"))
+
+    rec = r.records[0]
+    assert rec.coverage.meta.owner is Owner.UPSTREAM
+    assert rec.to_dict()["blocked_by"] == "log-parse"
+    assert r.evaluable == 1, "the target was in scope; it just never got its turn"
+
+
+def test_a_cascade_must_name_what_blocked_it():
+    with pytest.raises(ValueError, match="requires blocked_by"):
+        Record("grad-spike", Coverage.NOT_CHECKED_PREREQUISITE_FAILED,
+               reason="upstream_failed")
+
+
+def test_unreachable_is_not_unhealthy():
+    """TIE-BREAK RULE, from the attack. A health check that could not reach the
+    service has made no observation. Reporting that as a failing verdict is this
+    library's own error in a different costume: absence of evidence rendered as
+    a result."""
+    r = Report(tool="prod-health", vocabulary=Vocabulary([
+        Reason("unreachable", Coverage.NOT_CHECKED_CHECKER_FAILED,
+               "the checker could not observe the target")]),
+        failing_verdicts=frozenset({"UNHEALTHY"}))
+    r.add(Record("api.example.com", Coverage.NOT_CHECKED_CHECKER_FAILED,
+                 reason="unreachable"))
+
+    assert r.failures() == [], "no observation was made, so nothing failed"
+    assert r.exit_code == EXIT_COVERAGE_INCOMPLETE
+    assert r.by_owner() == {Owner.TOOLING.value: 1}
+
+
+def test_every_state_still_has_a_distinct_owner_story():
+    """Two states may share an owner only if they share a remediation. The
+    moment they do not, one of them is misfiled."""
+    seen: dict[tuple, Coverage] = {}
+    for state in Coverage:
+        key = (state.meta.owner, state.meta.remediation)
+        assert key not in seen, f"{state} duplicates {seen[key]}"
+        seen[key] = state

@@ -61,6 +61,8 @@ class Owner(str, Enum):
     TOOLING = "tooling"
     DATA = "data"
     DEPLOYMENT = "deployment"
+    WAIVER_HOLDER = "waiver_holder"   # a named person who accepted the gap
+    UPSTREAM = "upstream"             # another target, which failed first
 
 
 class Permanence(str, Enum):
@@ -92,6 +94,8 @@ class Coverage(str, Enum):
     CHECKED = "CHECKED"
     NOT_CHECKED_DATA_DEGENERATE = "NOT_CHECKED/DATA_DEGENERATE"
     NOT_CHECKED_CHECKER_FAILED = "NOT_CHECKED/CHECKER_FAILED"
+    NOT_CHECKED_WAIVED = "NOT_CHECKED/WAIVED"
+    NOT_CHECKED_PREREQUISITE_FAILED = "NOT_CHECKED/PREREQUISITE_FAILED"
     OUT_OF_SCOPE_CALLER = "OUT_OF_SCOPE/CALLER"
     OUT_OF_SCOPE_DATA_TRANSIENT = "OUT_OF_SCOPE/DATA_TRANSIENT"
     OUT_OF_SCOPE_DATA_PERMANENT = "OUT_OF_SCOPE/DATA_PERMANENT"
@@ -118,7 +122,13 @@ class Coverage(str, Enum):
             Coverage.CHECKED,
             Coverage.NOT_CHECKED_DATA_DEGENERATE,
             Coverage.NOT_CHECKED_CHECKER_FAILED,
+            Coverage.NOT_CHECKED_WAIVED,
+            Coverage.NOT_CHECKED_PREREQUISITE_FAILED,
         )
+
+    @property
+    def is_waived(self) -> bool:
+        return self is Coverage.NOT_CHECKED_WAIVED
 
 
 _META: dict[Coverage, StateMeta] = {
@@ -138,6 +148,18 @@ _META: dict[Coverage, StateMeta] = {
         permanence=Permanence.MUTABLE,
         remediation="the checker raised, timed out or lacked a dependency; "
                     "fix the tooling and re-run",
+    ),
+    Coverage.NOT_CHECKED_WAIVED: StateMeta(
+        owner=Owner.WAIVER_HOLDER,
+        permanence=Permanence.MUTABLE,
+        remediation="in scope and deliberately not evaluated; a named person "
+                    "accepted the gap - revisit when the waiver expires",
+    ),
+    Coverage.NOT_CHECKED_PREREQUISITE_FAILED: StateMeta(
+        owner=Owner.UPSTREAM,
+        permanence=Permanence.MUTABLE,
+        remediation="a target this check depends on failed first; fix that one, "
+                    "then this becomes judgeable",
     ),
     Coverage.OUT_OF_SCOPE_CALLER: StateMeta(
         owner=Owner.CALLER,

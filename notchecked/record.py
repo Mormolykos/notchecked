@@ -99,6 +99,13 @@ class Record:
     verdict: str | None = None
     evidence: tuple[str, ...] = ()
     detail: str | None = None
+    # Required by NOT_CHECKED/PREREQUISITE_FAILED: the target that failed first.
+    # A cascade without a pointer to its cause is a dead end for whoever reads it.
+    blocked_by: str | None = None
+    # Required by NOT_CHECKED/WAIVED: who accepted the gap. A waiver with no
+    # name on it is not a waiver, it is a silence with paperwork.
+    waived_by: str | None = None
+    waiver_expires: str | None = None
     extra: Mapping[str, Any] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
@@ -126,6 +133,18 @@ class Record:
                     f"{self.target}: {self.coverage.value} cannot carry a "
                     f"verdict - no determination was made"
                 )
+            if (self.coverage is Coverage.NOT_CHECKED_PREREQUISITE_FAILED
+                    and not self.blocked_by):
+                raise ValueError(
+                    f"{self.target}: PREREQUISITE_FAILED requires blocked_by - "
+                    f"a cascade with no pointer to its cause is a dead end"
+                )
+            if (self.coverage is Coverage.NOT_CHECKED_WAIVED
+                    and not self.waived_by):
+                raise ValueError(
+                    f"{self.target}: WAIVED requires waived_by - an unowned "
+                    f"waiver is a silence with paperwork"
+                )
 
     def to_dict(self) -> dict[str, Any]:
         out: dict[str, Any] = {
@@ -136,6 +155,12 @@ class Record:
         }
         if self.reason:
             out["reason"] = self.reason
+        if self.blocked_by:
+            out["blocked_by"] = self.blocked_by
+        if self.waived_by:
+            out["waived_by"] = self.waived_by
+        if self.waiver_expires:
+            out["waiver_expires"] = self.waiver_expires
         if self.verdict is not None:
             out["verdict"] = self.verdict
         if self.evidence:
