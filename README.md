@@ -90,6 +90,15 @@ hangs off `CHECKED` rather than sitting beside the not-checked states.
 Collapsing the two axes is failure 1 above. The constructor enforces the separation: a gap
 cannot carry a verdict, and a checked record cannot carry a skip reason.
 
+### Scope: this starts after the unit exists
+
+**Nothing here governs how something becomes a checkable unit.** In a linter a row is a check
+somebody wrote, so the unit precedes the schema. In compliance the unit is the hard part — a
+framework is prose, and turning it into requirements is a judgment call: one paragraph can
+yield three, three can collapse into one. Ingest owns that mapping. This library governs what
+happens to a row once it *is* a row, and it must not be read as if the rows arrive by
+themselves.
+
 ### Two denominators, and only one is yours to quote
 
 ```
@@ -102,6 +111,33 @@ A percentage over `total` is a claim about the framework you named. A percentage
 
 When nothing was evaluable it returns `None`, not `0.0` — an absence of coverage is not a
 coverage of zero, and the two must not render alike.
+
+### Rows for the checkable subset, a count for the rest
+
+A framework document is hundreds of pages of which a few paragraphs concern anything an
+artifact can evidence. One `DATA_PERMANENT` row each makes the report mostly noise, and the
+signal drowns in its own denominator. So the excluded corpus can be a single counted rule:
+
+```python
+report.exclude(rule="no-artifact-evidence", count=412,
+               permanent_wrt="terraform-plan",
+               describes="framework prose no generated artifact can evidence")
+```
+
+What keeps this a measurement rather than a shrug: the count **cannot be stated without the
+rule that produced it**, and it lands in `total` — so excluding 412 of 415 shows an exclusion
+ratio of 99%, not a flattering silence. Use a row when a reader would want the target named;
+use a rule when the excluded set is large and uniform.
+
+### Permanence is relative to a target, never absolute
+
+`OUT_OF_SCOPE / DATA_PERMANENT` requires `permanent_wrt`, and the constructor refuses without
+it. "Nobody, never" is not a property of a control — it is a property of pairing that control
+with a kind of artifact. A Kubernetes control is permanently out of scope only while the
+target has no Kubernetes; change the target and it becomes a row.
+
+Unqualified, two reports on the same framework disagree and both are correct, which makes the
+state useless to the audience it was added for.
 
 ## Usage
 
@@ -215,9 +251,21 @@ The four-state split and the **caller-versus-data ownership axis** are Panagioti
 from ML training-run validation.
 
 The **fixed reason vocabulary**, **counts derived from rows rather than computed on top of
-them**, and the **permanence split** on `OUT_OF_SCOPE / DATA` are Boris Teplitsky's, from
-infrastructure compliance — along with the observation that separates
-`NOT_CHECKED / DATA_DEGENERATE` from `NOT_CHECKED / CHECKER_FAILED`.
+them**, and the **permanence split** on `OUT_OF_SCOPE / DATA` are **Boris Teplitsky**'s
+(`New_Technician_7041`), from infrastructure compliance — along with the observation that
+separates `NOT_CHECKED / DATA_DEGENERATE` from `NOT_CHECKED / CHECKER_FAILED`.
+
+Three further corrections are his, and each one changed the schema rather than the prose:
+
+- **the taxonomy starts after the unit exists**, and saying so is scope, not an omission;
+- **permanence must name its reference target** — `permanent_wrt` is required because
+  unqualified "never" cannot be reconciled between two reports;
+- **rows for the checkable subset, one count for the rest**, so the excluded corpus is
+  disclosed as a counted rule instead of drowning the report.
+
+He also confirmed, from the side that would have to defend it in an audit, that `WAIVED` is a
+coverage state and not a verdict, and that it has to stay in the denominator — which is the
+reason it exists.
 
 Neither of us would have found the whole shape alone; two unrelated domains is what makes it
 a primitive rather than one person's preference.

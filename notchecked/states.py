@@ -38,10 +38,22 @@ The verdict vocabulary belongs to the domain -- pass/warn/fail, compliant/
 non-compliant -- and hangs off `CHECKED` rather than sitting beside the
 not-checked states. Collapsing the two axes is instance 1 above.
 
+WHERE THIS TAXONOMY STARTS
+--------------------------
+It starts **after** the unit exists. In a linter a row is a check somebody wrote,
+so the unit precedes the schema. In compliance the unit is the hard part: a
+framework is prose, and turning it into checkable requirements is a judgment
+call -- one paragraph can yield three, three can collapse into one. Nothing here
+governs that mapping, and it must not be read as if the rows arrive by
+themselves. Ingest decides what becomes a row; this library governs what happens
+to a row once it is one. (Boris Teplitsky's first objection.)
+
 Credit: the CALLER-versus-DATA ownership axis and the four-state split are
-Panagiotis Gkilis's. The fixed reason vocabulary, counts derived from rows, and
-the permanence axis that splits OUT_OF_SCOPE / DATA are Boris Teplitsky's, from
-the infrastructure-compliance side.
+Panagiotis Gkilis's. The fixed reason vocabulary, counts derived from rows, the
+permanence axis that splits OUT_OF_SCOPE / DATA, the requirement that permanence
+name its reference target, and the rows-for-the-checkable-subset-with-a-count-
+for-the-rest reporting rule are Boris Teplitsky's (New_Technician_7041), from the
+infrastructure-compliance side.
 """
 
 from __future__ import annotations
@@ -72,9 +84,21 @@ class Permanence(str, Enum):
     deployment does not use that service changes the moment the deployment
     changes. A control excluded because no generated artifact can ever evidence
     it does not. They read identically in a report and one of them is a backlog
-    item forever."""
+    item forever.
 
-    SETTLED = "settled"      # will not change without changing the tool itself
+    PERMANENCE IS RELATIVE, NEVER ABSOLUTE. Boris's second objection, and it is
+    the one that changes the schema: `SETTLED` is meaningless on its own. The
+    same control is checkable against one target and unevidenceable against
+    another -- a Kubernetes control is permanently out of scope only while the
+    target has no Kubernetes. Change the target and it becomes a row.
+
+    So `SETTLED` must always name what it is settled *with respect to*, and
+    `Record` refuses to construct an OUT_OF_SCOPE/DATA_PERMANENT row without it.
+    Without that reference, two reports on the same framework disagree and both
+    are correct, which makes the state useless for exactly the audience it was
+    added for."""
+
+    SETTLED = "settled"      # unchanging WITH RESPECT TO a named target type
     MUTABLE = "mutable"      # changes when the owner acts, or when inputs change
 
 

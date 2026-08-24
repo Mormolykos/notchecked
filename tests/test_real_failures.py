@@ -114,7 +114,7 @@ def test_the_denominator_is_the_checkable_subset_not_the_framework():
         r.add(Record(f"AC-{i}", Coverage.CHECKED, verdict="COMPLIANT"))
     for i in range(8):
         r.add(Record(f"PR-{i}", Coverage.OUT_OF_SCOPE_DATA_PERMANENT,
-                     reason="no_signal"))
+                     reason="no_signal", permanent_wrt="terraform-plan"))
 
     assert r.total == 10
     assert r.evaluable == 2
@@ -130,7 +130,8 @@ def test_permanent_and_transient_exclusions_do_not_share_a_bucket():
     generated can ever evidence it does not."""
     r = Report(tool="landing-zone-audit", vocabulary=vocab())
     r.add(Record("AC-9", Coverage.OUT_OF_SCOPE_DATA_TRANSIENT, reason="service_unused"))
-    r.add(Record("AT-2", Coverage.OUT_OF_SCOPE_DATA_PERMANENT, reason="no_signal"))
+    r.add(Record("AT-2", Coverage.OUT_OF_SCOPE_DATA_PERMANENT, reason="no_signal",
+                 permanent_wrt="terraform-plan"))
 
     states = r.by_state()
     assert states[Coverage.OUT_OF_SCOPE_DATA_TRANSIENT] == 1

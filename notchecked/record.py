@@ -106,6 +106,13 @@ class Record:
     # name on it is not a waiver, it is a silence with paperwork.
     waived_by: str | None = None
     waiver_expires: str | None = None
+    # Required by OUT_OF_SCOPE/DATA_PERMANENT: the target type the exclusion is
+    # permanent WITH RESPECT TO. "Nobody, never" is not a property of the control
+    # -- it is a property of the pairing of that control with a kind of artifact.
+    # A Kubernetes control is permanently out of scope only while the target has
+    # no Kubernetes; change the target and it becomes a row. Unqualified, two
+    # reports on the same framework disagree and both are correct.
+    permanent_wrt: str | None = None
     extra: Mapping[str, Any] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
@@ -145,6 +152,19 @@ class Record:
                     f"{self.target}: WAIVED requires waived_by - an unowned "
                     f"waiver is a silence with paperwork"
                 )
+            if (self.coverage is Coverage.OUT_OF_SCOPE_DATA_PERMANENT
+                    and not self.permanent_wrt):
+                raise ValueError(
+                    f"{self.target}: DATA_PERMANENT requires permanent_wrt - "
+                    f"permanence is relative to a target type, and unqualified "
+                    f"'never' cannot be reconciled across two reports"
+                )
+        if (self.permanent_wrt
+                and self.coverage is not Coverage.OUT_OF_SCOPE_DATA_PERMANENT):
+            raise ValueError(
+                f"{self.target}: permanent_wrt only means something under "
+                f"OUT_OF_SCOPE/DATA_PERMANENT; {self.coverage.value} can change"
+            )
 
     def to_dict(self) -> dict[str, Any]:
         out: dict[str, Any] = {
@@ -161,6 +181,8 @@ class Record:
             out["waived_by"] = self.waived_by
         if self.waiver_expires:
             out["waiver_expires"] = self.waiver_expires
+        if self.permanent_wrt:
+            out["permanent_wrt"] = self.permanent_wrt
         if self.verdict is not None:
             out["verdict"] = self.verdict
         if self.evidence:

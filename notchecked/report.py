@@ -54,8 +54,79 @@ EXIT_VERDICT_FAILED = 1
 EXIT_COVERAGE_INCOMPLETE = 2
 
 
+def _honest_pct(part: int, whole: int) -> str:
+    """A rounded percentage that never claims a boundary it has not reached.
+
+    Found by running this library's own README example: 413 of 415 excluded
+    rendered as "100% of all targets" while one target had in fact been checked.
+    A reader takes that as "nothing was measured", which is exactly the
+    indistinguishable-from-nothing failure the library exists to remove -- here
+    committed by its own reporter, one layer above the schema it protects.
+
+    So 100% is printed only when part == whole, 0% only when part == 0, and
+    everything between is floored into (0, 100)."""
+    if whole <= 0:
+        return "0%"
+    if part >= whole:
+        return "100%"
+    if part <= 0:
+        return "0%"
+    return f"{min(99, max(1, int(part * 100 // whole)))}%"
+
+
 class ReportError(ValueError):
     """Raised for a report that cannot be honestly summarised."""
+
+
+@dataclass(frozen=True)
+class Exclusion:
+    """A whole class of targets that never became rows, and the rule that did it.
+
+    Boris Teplitsky's third objection, from compliance: a framework document is
+    hundreds of pages of which a few paragraphs concern anything an artifact can
+    evidence. Emitting a DATA_PERMANENT row for every one of the rest makes the
+    report mostly noise, and the signal drowns in its own denominator.
+
+    So ingest decides what becomes a row, and the report carries **rows for the
+    checkable subset and one count for the rest**. What makes this a measurement
+    rather than a shrug is that the count cannot be stated without the `rule`
+    that produced it and the target type it is relative to. An exclusion whose
+    rule nobody can read is the same silence this library exists to remove -- it
+    has just moved up one level, from the row to the corpus.
+
+    These never enter `evaluable`. They do enter `total`, because they were
+    considered, and a coverage ratio that quietly forgets them is the number
+    Boris warned about.
+    """
+
+    rule: str
+    count: int
+    permanent_wrt: str
+    describes: str | None = None
+
+    def __post_init__(self) -> None:
+        if not self.rule:
+            raise ReportError(
+                "an exclusion needs a named rule; an unattributed count is the "
+                "silence this library removes, moved up a level"
+            )
+        if not self.permanent_wrt:
+            raise ReportError(
+                f"exclusion {self.rule!r} needs permanent_wrt - permanence is "
+                f"relative to a target type, never absolute"
+            )
+        if self.count < 0:
+            raise ReportError(f"exclusion {self.rule!r}: count cannot be negative")
+
+    def to_dict(self) -> dict[str, Any]:
+        out: dict[str, Any] = {
+            "rule": self.rule,
+            "count": self.count,
+            "permanent_wrt": self.permanent_wrt,
+        }
+        if self.describes:
+            out["describes"] = self.describes
+        return out
 
 
 @dataclass
@@ -77,6 +148,7 @@ class Report:
     failing_verdicts: frozenset[str] | None = None
     expected: frozenset[str] | None = None
     context: Mapping[str, Any] = field(default_factory=dict)
+    exclusions: list[Exclusion] = field(default_factory=list)
 
     def __post_init__(self) -> None:
         if self.failing_verdicts is not None:
@@ -104,6 +176,29 @@ class Report:
     def extend(self, records: Iterable[Record]) -> None:
         for r in records:
             self.add(r)
+
+    def exclude(self, rule: str, count: int, permanent_wrt: str,
+                describes: str | None = None) -> Exclusion:
+        """Record a class of targets that ingest ruled out before it made rows.
+
+        Use this instead of emitting one DATA_PERMANENT record per item when the
+        excluded set is large and uniform -- the hundreds of framework
+        paragraphs no artifact can evidence. Use a record when the exclusion is
+        specific enough that a reader would want to see the target named.
+
+        Two rules with the same name are refused: merging them would hide which
+        rule did the excluding, and the rule is the only thing making this a
+        measurement.
+        """
+        if any(e.rule == rule for e in self.exclusions):
+            raise ReportError(
+                f"exclusion rule {rule!r} is already recorded; two counts under "
+                f"one rule name cannot be told apart afterwards"
+            )
+        exclusion = Exclusion(rule=rule, count=count,
+                              permanent_wrt=permanent_wrt, describes=describes)
+        self.exclusions.append(exclusion)
+        return exclusion
 
     # -- derived counts ----------------------------------------------------
 
@@ -151,8 +246,19 @@ class Report:
         return self.expected is not None
 
     @property
+    def bulk_excluded(self) -> int:
+        """Targets ruled out by a named rule before any row was written."""
+        return sum(e.count for e in self.exclusions)
+
+    @property
     def total(self) -> int:
-        return len(self.records)
+        """Every target considered -- rows plus the classes ingest ruled out.
+
+        Bulk exclusions are counted here and nowhere in `evaluable`. Leaving
+        them out of `total` would let a report exclude ninety percent of a
+        framework and still show a flattering `excluded_ratio`, which is the
+        exact place Boris said a coverage number goes to hide."""
+        return len(self.records) + self.bulk_excluded
 
     @property
     def evaluable(self) -> int:
@@ -178,8 +284,9 @@ class Report:
 
     @property
     def excluded(self) -> int:
+        """Out-of-scope rows plus every bulk-excluded target."""
         return sum(1 for r in self.records
-                   if not r.coverage.counts_toward_denominator)
+                   if not r.coverage.counts_toward_denominator) + self.bulk_excluded
 
     @property
     def excluded_ratio(self) -> float | None:
@@ -253,7 +360,9 @@ class Report:
                 "by_state": {s.value: n for s, n in self.by_state().items()},
                 "by_verdict": self.by_verdict(),
                 "by_owner": self.by_owner(),
+                "bulk_excluded": self.bulk_excluded,
             },
+            "exclusions": [e.to_dict() for e in self.exclusions],
             "missing": list(self.missing()),
             "records": [r.to_dict() for r in self.records],
             "exit_code": self.exit_code,
@@ -271,13 +380,19 @@ class Report:
         lines = [f"{self.tool}: {self.checked}/{self.evaluable} evaluable "
                  f"targets checked"]
         if self.excluded:
-            pct = f"{self.excluded_ratio:.0%}" if self.excluded_ratio else "0%"
-            lines[0] += f", {self.excluded} out of scope ({pct} of all targets)"
+            lines[0] += (f", {self.excluded} out of scope "
+                         f"({_honest_pct(self.excluded, self.total)} of all targets)")
         if self.waived:
             lines[0] += f", {self.waived} waived"
         if not self.expected_declared:
             lines.append("  no expected target set declared - a target that "
                          "never arrived cannot be detected")
+        for e in self.exclusions:
+            lines.append(
+                f"  excluded before rows: {e.count} by rule {e.rule!r} "
+                f"(permanent wrt {e.permanent_wrt})"
+                + (f" - {e.describes}" if e.describes else "")
+            )
         for verdict, n in sorted(self.by_verdict().items()):
             lines.append(f"  {verdict}: {n}")
         for target in self.missing():
