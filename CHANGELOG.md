@@ -53,10 +53,35 @@ everything between is floored into `(0, 100)`. The mirror case is covered too: 1
 
 14 new tests (43 total, from 29).
 
-**Still outstanding before a tag:** the 24-case taxonomy attack was recorded only by its
-outcome — twelve fit one state, five fit none, four fit two — and never as a case list, so it
-cannot honestly be re-run against this schema. It should be written down as a test file so the
-next schema change can be attacked reproducibly instead of from memory.
+### The taxonomy attack is now a file, not a memory (2026-08-24)
+
+The first attack was recorded only by its outcome — twelve fit one state, five fit none, four
+fit two — and **never as a case list**, so when the schema changed it could not be re-run.
+Reconstructing the cases from recollection and calling that evidence would be this library's
+own failure mode, committed by its author.
+
+`tests/test_taxonomy_attack.py` is the fix, and it states plainly that it is a **new** attack
+rather than a recovery of the old one. 26 cases across ML training, infrastructure compliance,
+RAG evaluation, CI/CD and production monitoring, each asserting the state it lands in. Three
+structural tests on top: every state must be reached by some case, every claimed domain must
+appear, and every state that demands a pointer must still demand it — because the cases supply
+those pointers and would keep passing if the guard silently went.
+
+Three cases that fit **no** state are kept in `FITS_NO_STATE` with their reasoning: conflicting
+evidence (a verdict, not a gap), a partially-completed check (the caller must split the
+target), and a target nobody scheduled (caught by `expected` + `missing()`, since a row nobody
+wrote cannot carry a state). A documented hole is a finding; a deleted case is a hole nobody
+can see.
+
+**Verified to fire.** Removing the `permanent_wrt` guard makes both the objection test and the
+attack's pointer test fail; restoring it returns 74 passing. A suite that has never failed is
+not evidence.
+
+74 tests total.
+
+**Outstanding before a tag:** Boris has had the three corrections but has not yet responded to
+them. Tagging before he has had the chance to object would break the arrangement he was given
+— that objecting stays cheap until there is a release.
 
 ### The states
 
