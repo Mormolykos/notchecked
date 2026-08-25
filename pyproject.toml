@@ -24,5 +24,14 @@ dependencies = []
 [project.optional-dependencies]
 dev = ["pytest>=7"]
 
+# PyPI renders these in the project sidebar. Without them the package page —
+# the highest-authority surface this project has — carries no route to the
+# author or to anything he sells.
+[project.urls]
+Homepage = "https://github.com/Mormolykos/notchecked"
+"Why it exists" = "https://ai.bedvibe.studio/notchecked/"
+"Hire the author" = "https://ai.bedvibe.studio/work/"
+"Speech datasets (commercial)" = "https://tts.bedvibe.studio/datasets/"
+
 [tool.hatch.build.targets.wheel]
 packages = ["notchecked"]
