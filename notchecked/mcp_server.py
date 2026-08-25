@@ -102,6 +102,59 @@ def _scope_contradicts_exhaustive(scope: str) -> tuple[int, int] | None:
 
 
 # --------------------------------------------------------------------------
+# What coverage a claim actually needs
+# --------------------------------------------------------------------------
+#
+# THE CONTROL IS THE CLAIM TYPE, NOT A COVERAGE THRESHOLD. This is the part
+# that took longest to see, and it is why no percentage appears in this file as
+# a gate. 0.6% coverage is entirely adequate for "the policy says X" -- you need
+# the one document you are quoting and nothing else. The same 0.6% is
+# catastrophic for "there is no policy about X", which asserts something about
+# every document that was not read. A single threshold cannot serve both, and
+# picking one would license the second sentence or forbid the first.
+#
+# WHY FAITHFULNESS DOES NOT COVER THIS. Faithfulness asks whether the answer is
+# supported by the retrieved context. It never asks whether the context was
+# sufficient for the claim. An answer of "there is no such policy" derived from
+# 8 retrieved chunks scores a perfect faithfulness -- it invented nothing -- and
+# may be false about the other 2,423 documents. Faithfulness scores
+# answer-against-context; coverage scores context-against-corpus. They are
+# different axes and a system can be perfect on one while silent on the other.
+CLAIM_RULES = {
+    "existence": (
+        "An EXISTENCE claim ('the policy says X', 'he mentions Rust') needs only "
+        "the units it cites. Any coverage is sufficient."
+    ),
+    "absence": (
+        "An ABSENCE claim ('there is no policy about X') requires EXHAUSTIVE "
+        "coverage. It is a statement about every unit you did not read."
+    ),
+    "universal": (
+        "A UNIVERSAL claim ('all policies require X', 'the only mention is') "
+        "requires EXHAUSTIVE coverage, for the same reason as absence."
+    ),
+    "superlative": (
+        "A SUPERLATIVE claim ('the most recent', 'the largest') requires "
+        "EXHAUSTIVE coverage: the unread remainder may hold the true maximum."
+    ),
+    "count": (
+        "A COUNT claim ('there are three mentions') requires EXHAUSTIVE "
+        "coverage. A count over a sample is an estimate, and reporting it as a "
+        "count is the same silent upgrade this whole schema exists to stop."
+    ),
+}
+
+# Claims that assert something about what was NOT retrieved.
+_NEEDS_EXHAUSTIVE = frozenset({"absence", "universal", "superlative", "count"})
+
+
+def _claim_is_supported(claim_type: str, exhaustive: bool) -> bool:
+    if claim_type not in _NEEDS_EXHAUSTIVE:
+        return True
+    return exhaustive
+
+
+# --------------------------------------------------------------------------
 # Tool implementations
 # --------------------------------------------------------------------------
 
@@ -246,7 +299,8 @@ def _coverage_gap(target: str, state: str, reason: str,
 def _coverage_retrieval(target: str, query: str, corpus_size: int,
                         retrieved: int, in_context: int | None = None,
                         corpus_id: str | None = None,
-                        method: str | None = None) -> dict:
+                        method: str | None = None,
+                        claim_type: str = "existence") -> dict:
     """Record that a target was inspected THROUGH a retrieval system.
 
     THE POINT, AND IT IS THE WHOLE PRODUCT: retrieval is not the evidence. It
@@ -280,6 +334,14 @@ def _coverage_retrieval(target: str, query: str, corpus_size: int,
     rep = _state.get("report")
     if rep is None:
         return {"error": "no open report — call coverage_open first"}
+    if claim_type not in CLAIM_RULES:
+        return {"error": (
+            f"unknown claim_type {claim_type!r}. Valid: "
+            + ", ".join(sorted(CLAIM_RULES))
+            + ". The claim type is what decides how much coverage you need — a "
+              "percentage threshold cannot, because 0.6% is fine for 'the policy "
+              "says X' and catastrophic for 'there is no policy about X'."
+        )}
     if corpus_size <= 0:
         return {"error": (
             "corpus_size must be positive: it is the denominator, and a "
@@ -354,7 +416,20 @@ def _coverage_retrieval(target: str, query: str, corpus_size: int,
         "recorded": target, "coverage": "CHECKED", "stage": "answered",
         "scope": extra["scope"], "exhaustive": exhaustive,
         "dropped_at_context_assembly": dropped,
+        "claim_type": claim_type,
+        "claim_supported": _claim_is_supported(claim_type, exhaustive),
     }
+    if not out["claim_supported"]:
+        out["REFUSE_THIS_CLAIM"] = (
+            f"A {claim_type.upper()} claim asserts something about every unit you "
+            f"did NOT read, and {corpus_size - used} were never read. "
+            f"{CLAIM_RULES[claim_type]} "
+            "Downgrade the answer to what you found, or inspect the whole corpus. "
+            "Note that FAITHFULNESS does not help here: an answer perfectly "
+            "grounded in 8 retrieved chunks can still be a false statement about "
+            "2,431 documents. Faithfulness scores answer-against-context; this "
+            "scores context-against-corpus."
+        )
     if dropped > 0:
         out["PARTIAL_CONTEXT"] = (
             f"{dropped} of {retrieved} retrieved units were dropped before the agent "
@@ -537,6 +612,18 @@ TOOLS = [
                 "in_context": {"type": "integer", "description": "how many survived context assembly and reached you"},
                 "corpus_id": {"type": "string", "description": "which corpus and version"},
                 "method": {"type": "string", "description": "hybrid, dense, bm25, sql, ..."},
+                "claim_type": {
+                    "type": "string",
+                    "enum": ["existence", "absence", "universal", "superlative", "count"],
+                    "description": (
+                        "What SHAPE of claim you intend to make. This decides how much "
+                        "coverage you need — not a percentage. 'existence' ('the policy "
+                        "says X') needs only the cited units and is fine at 0.6%. "
+                        "'absence', 'universal', 'superlative' and 'count' each assert "
+                        "something about the units you did NOT read, and require "
+                        "exhaustive coverage at any corpus size."
+                    ),
+                },
             },
             "required": ["target", "query", "corpus_size", "retrieved"],
         },

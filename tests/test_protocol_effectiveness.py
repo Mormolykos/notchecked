@@ -300,3 +300,62 @@ def test_hole_retrieval_numbers_are_self_reported():
                           corpus_size=8, retrieved=8, in_context=8)
     assert not is_error
     assert body["exhaustive"] is True  # true of the declared corpus, and unverifiable
+
+
+# ==========================================================================
+# Claim type: the control is the SHAPE of the sentence, not a percentage
+# ==========================================================================
+
+def test_the_same_coverage_is_fine_for_one_claim_and_refused_for_another():
+    """The whole reason no threshold appears anywhere in this protocol.
+
+    0.598% is the live portfolio agent's real coverage. It is entirely adequate
+    for "he mentions Rust" and cannot support "he never mentions Rust". A single
+    percentage gate would either license the second sentence or forbid the first.
+    """
+    call("coverage_open", question="Does he mention Rust?", targets=["corpus"])
+    ok, _ = call("coverage_retrieval", target="corpus", query="Rust",
+                 corpus_size=1003, retrieved=6, in_context=6,
+                 claim_type="existence")
+    assert ok["claim_supported"] is True
+    assert "REFUSE_THIS_CLAIM" not in ok
+
+    call("coverage_open", question="Does he never mention Rust?", targets=["corpus"])
+    bad, _ = call("coverage_retrieval", target="corpus", query="Rust",
+                  corpus_size=1003, retrieved=6, in_context=6,
+                  claim_type="absence")
+    assert bad["claim_supported"] is False
+    assert "997 were never read" in bad["REFUSE_THIS_CLAIM"]
+
+
+def test_faithfulness_is_named_as_insufficient():
+    """A perfectly faithful answer can be a false universal claim. The refusal
+    says so, because 'but our faithfulness score is 1.0' is the objection this
+    will meet first."""
+    call("coverage_open", question="q", targets=["corpus"])
+    body, _ = call("coverage_retrieval", target="corpus", query="q",
+                   corpus_size=2431, retrieved=8, in_context=8,
+                   claim_type="absence")
+    assert "FAITHFULNESS does not help here" in body["REFUSE_THIS_CLAIM"]
+
+
+@pytest.mark.parametrize("claim", ["absence", "universal", "superlative", "count"])
+def test_every_claim_about_the_unread_remainder_needs_exhaustive(claim):
+    call("coverage_open", question="q", targets=["corpus"])
+    body, _ = call("coverage_retrieval", target="corpus", query="q",
+                   corpus_size=100, retrieved=99, in_context=99, claim_type=claim)
+    assert body["claim_supported"] is False, f"{claim} must require exhaustive"
+
+    call("coverage_open", question="q", targets=["corpus"])
+    body, _ = call("coverage_retrieval", target="corpus", query="q",
+                   corpus_size=100, retrieved=100, in_context=100, claim_type=claim)
+    assert body["claim_supported"] is True
+
+
+def test_an_unknown_claim_type_is_refused_with_the_reason():
+    call("coverage_open", question="q", targets=["corpus"])
+    body, is_error = call("coverage_retrieval", target="corpus", query="q",
+                          corpus_size=10, retrieved=1, claim_type="probably_fine")
+    assert is_error
+    assert "unknown claim_type" in body["error"]
+    assert "percentage threshold cannot" in body["error"]
