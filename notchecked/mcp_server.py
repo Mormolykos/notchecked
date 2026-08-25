@@ -56,6 +56,7 @@ USAGE
 from __future__ import annotations
 
 import json
+import re
 import sys
 from typing import Any
 
@@ -69,6 +70,35 @@ PROTOCOL_VERSION = "2024-11-05"
 # would let it record a gap against the wrong question, which is a quieter
 # version of the failure this exists to remove.
 _state: dict[str, Any] = {"report": None, "question": None}
+
+
+_SCOPE_FRACTION = re.compile(
+    r"([\d][\d,._]*)\s*(?:of|/|out of)\s*([\d][\d,._]*)", re.IGNORECASE)
+
+
+def _scope_contradicts_exhaustive(scope: str) -> tuple[int, int] | None:
+    """Numbers in a scope string that prove it is NOT exhaustive.
+
+    FOUND BY tests/test_protocol_effectiveness.py. `exhaustive` was a bare
+    assertion: an agent could write scope="3,000 of 10,828 words" and pass
+    exhaustive=True, and the absence warning would be dropped -- the tool
+    performing the exact failure it exists to prevent.
+
+    Where the scope carries "N of M", the contradiction is machine visible and
+    must be refused. Where it does not, the assertion stands unverified, which
+    is recorded as a known limit rather than hidden.
+    """
+    m = _SCOPE_FRACTION.search(scope or "")
+    if not m:
+        return None
+    try:
+        part = int(m.group(1).replace(",", "").replace("_", "").replace(".", ""))
+        whole = int(m.group(2).replace(",", "").replace("_", "").replace(".", ""))
+    except ValueError:
+        return None
+    if whole > 0 and part < whole:
+        return part, whole
+    return None
 
 
 # --------------------------------------------------------------------------
@@ -159,6 +189,17 @@ def _coverage_checked(target: str, evidence: str, scope: str = "",
             "Coverage and verdict are separate axes and that separation is the "
             "point."
         )}
+    if exhaustive:
+        contradiction = _scope_contradicts_exhaustive(scope)
+        if contradiction:
+            part, whole = contradiction
+            return {"error": (
+                f"you set exhaustive=true but your own scope says {part} of {whole}. "
+                "That contradicts itself, and accepting it would drop the absence "
+                "warning on a fragment — this tool performing the exact failure it "
+                "exists to prevent. Either inspect the whole target, or leave "
+                "exhaustive false and keep the warning."
+            )}
     rep.add(Record(
         target=target,
         coverage=Coverage.CHECKED,
