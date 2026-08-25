@@ -2,6 +2,37 @@
 
 All notable changes to `notchecked` are recorded here.
 
+## [Unreleased]
+
+On `main`, not in any published version. `pip install notchecked` gives 0.2.0,
+which collects **112 tests**; `main` collects **119**. Both are correct about
+different code, and this section exists because until now nothing outside the
+commit log said so.
+
+### Added
+
+- **`claim_type`: the control is the shape of the sentence, not a percentage**
+  (`a2cefb9`). `CLAIM_RULES` in `notchecked/mcp_server.py` names five claim types,
+  `_NEEDS_EXHAUSTIVE` marks the four that assert something about the unread remainder,
+  and `_claim_is_supported()` enforces it.
+
+  The question that produced it was what a retrieval system should report and what
+  counts as acceptable coverage. The second half has no numeric answer. 0.598% is a
+  live agent's real coverage: entirely adequate for *"he mentions Rust"*, where you
+  need only the unit you are quoting, and incapable of supporting *"he never mentions
+  Rust"*, which asserts something about 997 units nobody read. One threshold cannot
+  serve both — set it low and it licenses the second, set it high and it forbids the
+  first. So no percentage appears anywhere in the protocol as a gate. `existence`
+  needs only what it cites; `absence`, `universal`, `superlative` and `count` each
+  require exhaustive coverage at any corpus size, because 999,999 units of 1,000,000
+  still cannot establish absence.
+
+  **+7 tests** (`tests/test_protocol_effectiveness.py`: three cases plus
+  `test_every_claim_about_the_unread_remainder_needs_exhaustive` parametrized over the
+  four exhaustive types) — including that the same coverage is accepted for one claim
+  and refused for another, that faithfulness is named as insufficient, and that an
+  unknown claim type is refused with its reason rather than waved through.
+
 ## 0.2.0 — 2026-08-25
 
 An MCP server, and retrieval treated as an instrument with its own coverage.
