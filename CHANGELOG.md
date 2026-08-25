@@ -2,10 +2,77 @@
 
 All notable changes to `notchecked` are recorded here.
 
-## 0.1.0 — unreleased
+## 0.2.0 — 2026-08-25
 
-Nothing is tagged and nothing is on PyPI. The API is not frozen: the eight states are
-settled between two independent domains, the Python surface around them is not.
+An MCP server, and retrieval treated as an instrument with its own coverage.
+
+**No state was added or removed. The eight are frozen after Boris Teplitsky's public
+review**, and two external proposals were rejected on that ground: making `CHECKED` mean
+"the evidence was sufficient" re-collapses coverage into verdict, which is the bug this
+library exists for; and a context truncation is `CHECKER_FAILED` — the tooling surfaced
+the evidence and then could not observe it — not a ninth kind of gap.
+
+### The fifth instance of the failure was not a program
+
+The four cases in the README are all software. On 2026-08-25 an AI assistant working on
+this estate made six confident claims in one session, each from a partial measurement: a
+portfolio judged from 3,000 of 10,828 words; "five entries are missing" from a search
+that had stripped the HTML, so anything named only in an `href` was invisible; three
+different Rust crate counts from three broken filesystem walks; "the page is noindexed"
+from grepping for the *word* instead of the tag; "zero followed inbound links" measured
+on one platform of four; and an explicit recorded decision reported as an omission.
+
+Every one is a VERDICT issued where the honest output was NOT_CHECKED. The library could
+not help, because it types the skips a *program* makes and has nothing to say between an
+agent and a sentence.
+
+### Added
+
+- **`notchecked.mcp_server`** — an MCP server over stdio, written from the JSON-RPC wire
+  format. No SDK: this library declares no runtime dependencies, and a vocabulary that
+  needs a framework to be spoken is not a vocabulary.
+- **`coverage_retrieval`** — the part that matters. **Retrieval is not the evidence; it is
+  a measurement instrument, and an instrument has its own coverage.** An agent that
+  queried 2,431 documents and received 8 chunks inspected 0.3% of the corpus, and today
+  reports that identically to an exhaustive read. It also separates three failures that
+  currently share the label "the model hallucinated": nothing was retrieved (fix the
+  retriever), it was retrieved and dropped at context assembly (fix assembly), or the
+  agent had it and reasoned past it (fix the agent).
+- **`scope` and `exhaustive` on every checked row.** Evidence says *how*; scope says *how
+  much*. Without scope, "read the page" and "read 3,000 of 10,828 words" are the same row.
+- **An absence rule.** A partial inspection supports statements about what you FOUND. It
+  cannot support a claim that something is ABSENT — including at 999,999 of 1,000,000,
+  because a threshold there would be a lie with a decimal point on it.
+
+### Fixed
+
+- **`exhaustive` was a bare assertion.** An agent could pass `exhaustive=true` alongside
+  `scope="3,000 of 10,828 words"` and the absence warning was dropped — this tool
+  committing the exact failure it exists to prevent, one layer above the schema it
+  protects. Where the scope carries "N of M" the contradiction is machine visible and is
+  now refused. Found by the effectiveness suite on its first run.
+- Evidence-free `CHECKED` rows were accepted. They are now refused.
+- The server's own first version was refused by its own library for attaching verdicts
+  without declaring a failing set. That refusal is correct and is now surfaced at the
+  point of the mistake rather than on close.
+
+### Limits, recorded as passing tests rather than hidden
+
+An exhaustive search of the **wrong instrument** is still exhaustive. The target list is
+**self-declared**, so nothing here can know what the caller failed to think of. Retrieval
+counts are **self-reported**, with only internal consistency enforced. A hole nobody
+writes down is a hole nobody fixes.
+
+**Not claimed:** that the mechanism is proven. The tests show the protocol refuses a claim
+*when the tools are used*. They do not show an agent will use them, and they do not show
+the failure generalises beyond one estate.
+
+112 tests, ruff clean, zero runtime dependencies.
+
+## 0.1.0 — 2026-08-25
+
+First release to PyPI. The eight states are settled between two independent domains; the
+Python surface around them is not yet frozen.
 
 ### Boris Teplitsky's second review — three corrections, all schema-level (2026-08-24)
 

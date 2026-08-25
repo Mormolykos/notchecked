@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "notchecked"
-version = "0.1.0"
+version = "0.2.0"
 description = "Coverage accounting for validators: what was checked, what could not be checked, and what was never in scope."
 readme = "README.md"
 requires-python = ">=3.10"
