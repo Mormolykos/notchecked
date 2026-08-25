@@ -28,7 +28,6 @@ import pytest
 
 from notchecked import Coverage, Owner, Permanence, Record, Report
 
-
 # Every case: (id, domain, situation, state, required kwargs)
 # The kwargs exist because three states refuse to be constructed without a
 # pointer — blocked_by, waived_by, permanent_wrt. That refusal is under attack
@@ -36,66 +35,66 @@ from notchecked import Coverage, Owner, Permanence, Record, Report
 # the guard has silently gone.
 CASES = [
     # -- ML training runs -----------------------------------------------------
-    ("ml-01", "ml", "grad-norm spike check on a log whose every grad norm is 0.0 "
-     "because clipping is off — the signal is present and carries no scale",
+    ("ml-01", "ml", ("grad-norm spike check on a log whose every grad norm is 0.0 "
+     "because clipping is off — the signal is present and carries no scale"),
      Coverage.NOT_CHECKED_DATA_DEGENERATE, {}),
     ("ml-02", "ml", "loss-shape check on a run that trained normally",
      Coverage.CHECKED, {"verdict": "PASS"}),
     ("ml-03", "ml", "the log parser raised a UnicodeDecodeError partway through",
      Coverage.NOT_CHECKED_CHECKER_FAILED, {}),
-    ("ml-04", "ml", "a tfevents-only check run against a CSV log — this format "
-     "never carries the field and never will",
+    ("ml-04", "ml", ("a tfevents-only check run against a CSV log — this format "
+     "never carries the field and never will"),
      Coverage.OUT_OF_SCOPE_DATA_PERMANENT, {"permanent_wrt": "csv-log"}),
     ("ml-05", "ml", "an eval-set check the caller did not select",
      Coverage.OUT_OF_SCOPE_CALLER, {}),
-    ("ml-06", "ml", "checkpoint-vs-best-step comparison skipped because the "
-     "checkpoint index itself failed to parse first",
+    ("ml-06", "ml", ("checkpoint-vs-best-step comparison skipped because the "
+     "checkpoint index itself failed to parse first"),
      Coverage.NOT_CHECKED_PREREQUISITE_FAILED, {"blocked_by": "checkpoint-index"}),
 
     # -- Infrastructure compliance -------------------------------------------
     ("cmp-01", "compliance", "a control evidenced by the terraform plan, evaluated, compliant",
      Coverage.CHECKED, {"verdict": "COMPLIANT"}),
-    ("cmp-02", "compliance", "a Kubernetes control against a plan with no Kubernetes — "
-     "becomes checkable the moment the deployment adds it",
+    ("cmp-02", "compliance", ("a Kubernetes control against a plan with no Kubernetes — "
+     "becomes checkable the moment the deployment adds it"),
      Coverage.OUT_OF_SCOPE_DATA_TRANSIENT, {}),
-    ("cmp-03", "compliance", "a control about staff background checks — no generated "
-     "artifact of any kind can evidence a human process",
+    ("cmp-03", "compliance", ("a control about staff background checks — no generated "
+     "artifact of any kind can evidence a human process"),
      Coverage.OUT_OF_SCOPE_DATA_PERMANENT, {"permanent_wrt": "terraform-plan"}),
-    ("cmp-04", "compliance", "an applicable control a named risk owner accepted "
-     "rather than evaluating, with an expiry",
+    ("cmp-04", "compliance", ("an applicable control a named risk owner accepted "
+     "rather than evaluating, with an expiry"),
      Coverage.NOT_CHECKED_WAIVED,
      {"waived_by": "risk-owner@example.com", "waiver_expires": "2026-12-31"}),
     ("cmp-05", "compliance", "the policy engine timed out against a very large plan",
      Coverage.NOT_CHECKED_CHECKER_FAILED, {}),
-    ("cmp-06", "compliance", "a control whose evidence field is present but empty "
-     "in every resource — present and unusable",
+    ("cmp-06", "compliance", ("a control whose evidence field is present but empty "
+     "in every resource — present and unusable"),
      Coverage.NOT_CHECKED_DATA_DEGENERATE, {}),
 
     # -- Retrieval / RAG evaluation ------------------------------------------
     ("rag-01", "rag", "a question the model answered and the grader scored",
      Coverage.CHECKED, {"verdict": "PASS"}),
-    ("rag-02", "rag", "the model refused; there is no assertion to grade, and "
+    ("rag-02", "rag", ("the model refused; there is no assertion to grade, and "
      "scoring the refusal against the gold phrase is how ten refusals were "
-     "counted correct",
+     "counted correct"),
      Coverage.NOT_CHECKED_DATA_DEGENERATE, {}),
-    ("rag-03", "rag", "a citation check on a corpus with no URLs at all — this "
-     "corpus kind cannot carry them",
+    ("rag-03", "rag", ("a citation check on a corpus with no URLs at all — this "
+     "corpus kind cannot carry them"),
      Coverage.OUT_OF_SCOPE_DATA_PERMANENT, {"permanent_wrt": "plaintext-corpus"}),
-    ("rag-04", "rag", "an answer-quality check skipped because retrieval returned "
-     "nothing to answer from",
+    ("rag-04", "rag", ("an answer-quality check skipped because retrieval returned "
+     "nothing to answer from"),
      Coverage.NOT_CHECKED_PREREQUISITE_FAILED, {"blocked_by": "retrieval"}),
-    ("rag-05", "rag", "an adversarial injection case the caller filtered out of "
-     "this run with a category flag",
+    ("rag-05", "rag", ("an adversarial injection case the caller filtered out of "
+     "this run with a category flag"),
      Coverage.OUT_OF_SCOPE_CALLER, {}),
 
     # -- CI/CD ----------------------------------------------------------------
     ("ci-01", "cicd", "unit tests ran and passed",
      Coverage.CHECKED, {"verdict": "PASS"}),
-    ("ci-02", "cicd", "integration tests skipped because the build job they "
-     "depend on failed",
+    ("ci-02", "cicd", ("integration tests skipped because the build job they "
+     "depend on failed"),
      Coverage.NOT_CHECKED_PREREQUISITE_FAILED, {"blocked_by": "build"}),
-    ("ci-03", "cicd", "a Windows matrix leg on a repository that ships a Linux-only "
-     "binary — no Windows artifact will ever exist to test",
+    ("ci-03", "cicd", ("a Windows matrix leg on a repository that ships a Linux-only "
+     "binary — no Windows artifact will ever exist to test"),
      Coverage.OUT_OF_SCOPE_DATA_PERMANENT, {"permanent_wrt": "linux-only-wheel"}),
     ("ci-04", "cicd", "a flaky external service made the smoke test error, not fail",
      Coverage.NOT_CHECKED_CHECKER_FAILED, {}),
@@ -105,11 +104,11 @@ CASES = [
     # -- Production monitoring ------------------------------------------------
     ("mon-01", "monitoring", "p99 latency SLO evaluated over a full window",
      Coverage.CHECKED, {"verdict": "PASS"}),
-    ("mon-02", "monitoring", "an error-rate SLO over a window with zero requests — "
-     "a ratio with an empty denominator is not a rate of zero",
+    ("mon-02", "monitoring", ("an error-rate SLO over a window with zero requests — "
+     "a ratio with an empty denominator is not a rate of zero"),
      Coverage.NOT_CHECKED_DATA_DEGENERATE, {}),
-    ("mon-03", "monitoring", "a GPU-saturation alert on a CPU-only deployment, "
-     "which changes if the deployment gets a GPU",
+    ("mon-03", "monitoring", ("a GPU-saturation alert on a CPU-only deployment, "
+     "which changes if the deployment gets a GPU"),
      Coverage.OUT_OF_SCOPE_DATA_TRANSIENT, {}),
     ("mon-04", "monitoring", "the metrics scrape failed for the whole interval",
      Coverage.NOT_CHECKED_CHECKER_FAILED, {}),
@@ -120,16 +119,16 @@ CASES = [
 # deleted case is a hole nobody can see. If a future state absorbs one of these,
 # move it up to CASES rather than dropping it.
 FITS_NO_STATE = [
-    ("hole-01", "the check ran, the evidence conflicts, and the tool has no way "
+    ("hole-01", ("the check ran, the evidence conflicts, and the tool has no way "
      "to prefer one source. Resolved as a VERDICT, not a coverage gap — a "
-     "determination that the evidence disagrees IS a determination."),
-    ("hole-02", "a check that partially completed: 900 of 1000 resources scanned "
+     "determination that the evidence disagrees IS a determination.")),
+    ("hole-02", ("a check that partially completed: 900 of 1000 resources scanned "
      "before a timeout. Neither CHECKED nor NOT_CHECKED is honest for the target "
-     "as a whole. Currently the caller must split it into two targets."),
-    ("hole-03", "a target that is in scope, evaluable, and simply never got "
+     "as a whole. Currently the caller must split it into two targets.")),
+    ("hole-03", ("a target that is in scope, evaluable, and simply never got "
      "scheduled — no waiver, no prerequisite, nobody decided. Caught by "
      "`expected` + `missing()` rather than by a state, on purpose: a row nobody "
-     "wrote cannot carry a state."),
+     "wrote cannot carry a state.")),
 ]
 
 

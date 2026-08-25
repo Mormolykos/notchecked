@@ -12,9 +12,10 @@ a byproduct rather than a later reconstruction.
 
 from __future__ import annotations
 
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
 from types import MappingProxyType
-from typing import Any, Iterable, Mapping
+from typing import Any
 
 from .states import Coverage
 

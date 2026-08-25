@@ -39,8 +39,9 @@ from __future__ import annotations
 
 import json
 from collections import Counter
+from collections.abc import Iterable, Iterator, Mapping, Sequence
 from dataclasses import dataclass, field
-from typing import Any, Iterable, Iterator, Mapping, Sequence
+from typing import Any
 
 from .record import Record, Vocabulary
 from .states import Coverage
@@ -377,8 +378,8 @@ class Report:
 
         A validator that reports a verdict without reporting its coverage is
         asserting something it did not measure."""
-        lines = [f"{self.tool}: {self.checked}/{self.evaluable} evaluable "
-                 f"targets checked"]
+        lines = [(f"{self.tool}: {self.checked}/{self.evaluable} evaluable "
+                 f"targets checked")]
         if self.excluded:
             lines[0] += (f", {self.excluded} out of scope "
                          f"({_honest_pct(self.excluded, self.total)} of all targets)")

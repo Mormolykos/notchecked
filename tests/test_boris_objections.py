@@ -23,7 +23,6 @@ import pytest
 
 from notchecked import Coverage, Exclusion, Record, Report, ReportError
 
-
 # -- Objection 2: permanence is relative --------------------------------------
 
 def test_permanent_exclusion_must_name_what_it_is_permanent_against():

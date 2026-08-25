@@ -291,7 +291,7 @@ def test_a_verdict_vocabulary_must_be_declared():
     r = Report(tool="compliance", vocabulary=vocab())
     r.add(Record("AC-1", Coverage.CHECKED, verdict="NON_COMPLIANT"))
     with pytest.raises(ReportError, match="failing_verdicts was never declared"):
-        r.exit_code
+        r.exit_code  # noqa: B018 - accessing the property IS the call under test
 
 
 def test_a_record_cannot_be_mutated_after_the_check_returned():
