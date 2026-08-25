@@ -1,0 +1,57 @@
+name: CI
+
+# Callable from release.yml so a release runs the same gate a pull request
+# runs -- not a copy of it and not a subset. A release that could pass a
+# weaker gate than a pull request is the fault this reuse exists to prevent.
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.10", "3.11", "3.12", "3.13"]
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - run: python -m pip install --upgrade pip
+      - run: python -m pip install -e ".[dev]"
+
+      # The package declares zero runtime dependencies. This asserts it rather
+      # than trusting the metadata: import it from a directory that is not the
+      # source tree, with nothing but pytest installed alongside.
+      - name: It imports with no dependencies
+        run: cd /tmp && python -c "import notchecked; print(notchecked.__name__)"
+
+      - run: python -m pytest -q
+
+  build:
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - run: python -m pip install --upgrade pip build
+      - run: python -m build
+
+      # The artifact the release publishes is the one this job built and the
+      # gate above tested. Rebuilding at publish time would upload bytes that
+      # nothing tested -- a different wheel from the same source.
+      - uses: actions/upload-artifact@v4
+        with:
+          name: distributions
+          path: dist/

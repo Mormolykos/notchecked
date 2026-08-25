@@ -1,0 +1,79 @@
+name: Release
+
+# A tag is the only trigger. There is no manual "publish" button and no branch
+# that publishes on merge, so the released version is always a named point in
+# history that someone can check out.
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read
+
+jobs:
+  gate:
+    uses: ./.github/workflows/ci.yml
+
+  publish:
+    name: publish to PyPI
+    needs: gate
+    runs-on: ubuntu-latest
+    environment:
+      name: pypi
+      url: https://pypi.org/p/notchecked
+    permissions:
+      # Trusted publishing. PyPI mints a short-lived token from this OIDC
+      # identity, so there is no long-lived API token in the repository, in an
+      # organisation secret, or on the maintainer's laptop. Nothing to leak and
+      # nothing to rotate.
+      id-token: write
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      # PyPI rejects a version mismatch anyway, but it rejects it after the
+      # build, in a step whose error names a URL rather than a procedure.
+      # Failing here says what is wrong and where.
+      - name: The tag matches the version in pyproject.toml
+        run: |
+          python - <<'PY'
+          import os, sys, tomllib, pathlib
+          declared = tomllib.loads(pathlib.Path("pyproject.toml").read_text())["project"]["version"]
+          tag = os.environ["TAG"].lstrip("v")
+          if declared != tag:
+              sys.exit(f"tag {tag!r} != pyproject version {declared!r} -- "
+                       f"bump pyproject.toml or retag, do not publish this")
+          print(f"tag and version agree: {declared}")
+          PY
+        env:
+          TAG: ${{ github.ref_name }}
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: distributions
+          path: dist
+
+      # Pinned to a commit SHA, not a tag. This is the one action in the
+      # repository that holds a credential: a moving tag on it is a moving
+      # credential holder.
+      # v1.14.2
+      - uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33
+
+  github-release:
+    name: GitHub release
+    needs: publish
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/download-artifact@v4
+        with:
+          name: distributions
+          path: dist
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*
+          generate_release_notes: true
